@@ -329,6 +329,24 @@ final class CustomCommandRunnerTests: XCTestCase {
         XCTAssertEqual(fix.store.sidebarVisible, !fix.sidebarBefore)
     }
 
+    func testHeldRepeatTailAutorepeatsOnlyWhileTheWindowIsOpen() throws {
+        let fix = try fixture(keymap: "map ctrl+a>s --repeat toggle_sidebar\n")
+        let heldTail = keyDown("s", keyCode: 1, mods: [], repeating: true)
+        let heldLeader = keyDown("a", keyCode: 0, mods: [.control], repeating: true)
+
+        XCTAssertTrue(fix.runner.handleKeyEvent(leader, in: window))
+        XCTAssertTrue(fix.runner.handleKeyEvent(sidebarTail, in: window))
+        XCTAssertTrue(fix.runner.handleKeyEvent(heldTail, in: window))
+        XCTAssertEqual(fix.store.sidebarVisible, fix.sidebarBefore, "autorepeat of the live tail fires")
+        XCTAssertTrue(fix.runner.handleKeyEvent(heldLeader, in: window), "other consumed autorepeat stays swallowed")
+        XCTAssertTrue(fix.runner.handleKeyEvent(heldTail, in: window), "and leaves the window open")
+        XCTAssertEqual(fix.store.sidebarVisible, !fix.sidebarBefore)
+
+        XCTAssertFalse(fix.runner.handleKeyEvent(keyDown("\u{1B}", keyCode: 53, mods: []), in: window))
+        XCTAssertTrue(fix.runner.handleKeyEvent(heldTail, in: window), "nothing leaks to the terminal once closed")
+        XCTAssertEqual(fix.store.sidebarVisible, !fix.sidebarBefore)
+    }
+
     // the menu-bound alternative belongs to AppKit, so the monitor must leave it alone — registering it in
     // both places is the double dispatch the menu/monitor split exists to prevent.
     func testTheMenuBoundAlternativeIsNotAlsoDispatchedByTheMonitor() throws {

@@ -859,7 +859,7 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   resolved built-in actions and override state; live AppKit menu equivalents/menu/title/selector; path;
   custom commands with `repeats` and `errorHud` (booleans), `errorPosition` (canonical, default center), and optional
   `errorPane` (left/right, omitted for session-wide); diagnostics. Human rows show `--repeat` and opted-in error
-  options. An action reports `repeats: true` only while its `--repeat` line kept a monitor-bound sequence.
+  options. `repeats` is true, on an action or a command, only while its `--repeat` line kept a leader sequence.
   An action's `chord` is the menu key equivalent alone, so it keeps comparing
   against `menu`, while `alternates` holds its monitor-bound binds in kitty syntax and is omitted when
   empty; the human actions column joins the whole set with `|`. Both halves are canonical kitty syntax, not

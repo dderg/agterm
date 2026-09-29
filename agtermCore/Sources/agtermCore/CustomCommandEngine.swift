@@ -51,6 +51,8 @@ public struct CustomCommandEngine: Sendable {
 
     public var isRepeating: Bool { matcher.isRepeating }
 
+    public func isRepeatTail(_ chord: Chord) -> Bool { matcher.isRepeatTail(chord) }
+
     public mutating func reset() {
         matcher.reset()
     }

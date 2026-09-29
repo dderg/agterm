@@ -48,7 +48,7 @@ public struct KeybindMatcher: Sendable {
     public mutating func advance(_ chord: Chord) -> MatchResult {
         if let prefix = repeatPrefix {
             repeatPrefix = nil
-            if let bind = binds.first(where: { repeating.contains($0.target) && $0.keybind == prefix + [chord] }) {
+            if let bind = repeatBind(prefix: prefix, tail: chord) {
                 repeatPrefix = prefix
                 return .fired(bind.target)
             }
@@ -82,5 +82,15 @@ public struct KeybindMatcher: Sendable {
     public mutating func reset() {
         pending = []
         repeatPrefix = nil
+    }
+
+    /// Whether `chord` would fire again inside the open repeat window. Lets the app route autorepeat of a held
+    /// tail to `advance` while every other consumed key's autorepeat stays swallowed.
+    public func isRepeatTail(_ chord: Chord) -> Bool {
+        repeatPrefix.map { repeatBind(prefix: $0, tail: chord) != nil } ?? false
+    }
+
+    private func repeatBind(prefix: [Chord], tail: Chord) -> (keybind: Keybind, target: KeybindTarget)? {
+        binds.first { repeating.contains($0.target) && $0.keybind == prefix + [tail] }
     }
 }

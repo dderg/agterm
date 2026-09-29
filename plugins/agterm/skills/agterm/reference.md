@@ -1407,11 +1407,12 @@ parse diagnostics (0 = clean). App-global (no `--window`).
 - `actions[]` — every rebindable built-in: `action` (its `keymap.conf` name), `chord` (the resolved menu
   chord in the same kitty syntax the file uses, omitted when the action is keyless or a `map` line left it
   with no menu chord), `alternates[]` (its other binds, the ones a key monitor delivers, omitted when it
-  has none), `repeats: true` when its `map` line carries `--repeat`, and `overridden: true` when a `map`
-  line moved it off its shipped default. Every action is
+  has none), `repeats: true` only when its `--repeat` line kept a leader sequence among those alternatives,
+  and `overridden: true` when a `map` line moved it off its shipped default. Every action is
   listed, bound or not, so you can also see which chords are free.
 - `commands[]` — the custom commands: `name`, and `shortcut` omitted for a palette-only one. A shortcut
-  holding alternatives is one `|`-joined string, in the file's own spelling. `repeats` and `errorHud` are
+  holding alternatives is one `|`-joined string, in the file's own spelling. `repeats` (true only when a
+  `--repeat` shortcut kept a leader sequence) and `errorHud` are
   always booleans, `errorPosition` is the canonical position (default `center`), and `errorPane` is `left` or `right`,
   omitted for session-wide placement. The human listing shows `--repeat` and error options for opted-in commands.
 - `diagnostics[]` — `line` + `message` per parse problem (`keymap.reload` returns only the count).
@@ -1450,8 +1451,9 @@ Key Mapping). Three verbs, line-based; blank lines and `#` comments ignored:
   A custom chord may be a leader sequence (chords joined by `>`, e.g. `ctrl+a>g`). No chord → palette-only.
 - `--repeat` (either verb, after the chord) is tmux's `bind -r`: after a leader sequence fires, its prefix
   stays live for 0.5 s, so the last chord of any `--repeat` sequence sharing that prefix fires again alone
-  (`ctrl+a>ctrl+l ctrl+l`). Any other key ends the window and is matched afresh. `keymap list` reports
-  `repeats: true` on the action or command.
+  (`ctrl+a>ctrl+l ctrl+l`); holding the tail autorepeats it. Any other key ends the window and is matched
+  afresh. A tail without a modifier (`ctrl+a>n`) takes that letter when typed within the window. Only a
+  leader sequence can repeat: `keymap list` reports `repeats` true only when one survived.
 - `global-hotkey <chord>` — bind ONE system-wide chord that summons the quick terminal while any
   application is frontmost. Unset unless the line is present. Exactly one chord: no alternatives, no
   leader sequence, and it needs a modifier unless it is a function key.

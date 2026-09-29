@@ -12,7 +12,7 @@ public struct Keymap: Equatable, Sendable {
     /// Actions whose `map` line offered no menu-bindable alternative. Distinct from ABSENT, which means
     /// "keep the shipped default": without this, `map ctrl+space>s toggle_split` would leave ⌘D live.
     public let builtinUnbound: Set<BuiltinAction>
-    /// Actions whose `map` line carried `--repeat` and kept a monitor-bound sequence.
+    /// Actions whose `map` line carried `--repeat` and kept a monitor-bound leader sequence.
     public let builtinRepeating: Set<BuiltinAction>
     /// The system-wide chord that summons the quick terminal, nil when the file binds none. Registered with
     /// the OS rather than the app's local monitor, so it deliberately takes NO part in the conflict model:
@@ -200,7 +200,9 @@ public func parseKeymap(_ text: String) -> (keymap: Keymap, diagnostics: [Keymap
                    builtinUnbound: unboundAfterRestoringStrandedDefaults(compatibilityUnbound,
                                                                          overrides: builtinOverrides,
                                                                          survivors: survivors),
-                   builtinRepeating: Set(sequences.keys.filter { resolved.alternatives[$0]?.repeats == true }),
+                   builtinRepeating: Set(sequences.filter { action, keybinds in
+                       resolved.alternatives[action]?.repeats == true && keybinds.contains { $0.count > 1 }
+                   }.keys),
                    globalHotkey: globalHotkey),
             diagnostics)
 }
@@ -569,16 +571,20 @@ private func survivingAlternatives(_ survivors: [MonitorAlternative]) -> [Builti
 /// The parsed commands with each keyed one's `shortcut` written from the raw substrings its alternatives kept
 /// — the single place the string form is produced, splicing rather than re-rendering so the user's own
 /// spelling survives. A command that lost every alternative ends up with `shortcut == ""`, palette-only.
+/// `repeats` survives only beside a surviving leader sequence, the one shape that can repeat.
 private func applySurvivingShortcuts(to commandLines: [ParsedCommandLine],
                                      survivors: [MonitorAlternative]) -> [CustomCommand] {
     var raws: [UUID: [String]] = [:]
+    var sequenced: Set<UUID> = []
     for survivor in survivors {
         guard case .command(let id) = survivor.target else { continue }
         raws[id, default: []].append(survivor.raw)
+        if survivor.keybind.count > 1 { sequenced.insert(id) }
     }
     return commandLines.map { commandLine in
-        guard !commandLine.alternatives.isEmpty else { return commandLine.command }
         var command = commandLine.command
+        command.repeats = command.repeats && sequenced.contains(command.id)
+        guard !commandLine.alternatives.isEmpty else { return command }
         command.shortcut = (raws[command.id] ?? []).joined(separator: "|")
         return command
     }

@@ -114,9 +114,12 @@ struct KeybindMatcherTests {
         let target = KeybindTarget.builtin(.nextSession)
         var matcher = KeybindMatcher([([ctrlA, b], target)], repeating: [target])
         #expect(matcher.advance(ctrlA) == .armed)
+        #expect(!matcher.isRepeatTail(b), "armed, not repeating")
         #expect(matcher.advance(b) == .fired(target))
         #expect(matcher.isRepeating)
         #expect(!matcher.isArmed)
+        #expect(matcher.isRepeatTail(b))
+        #expect(!matcher.isRepeatTail(ctrlA))
         #expect(matcher.advance(b) == .fired(target))
         #expect(matcher.advance(b) == .fired(target))
     }
