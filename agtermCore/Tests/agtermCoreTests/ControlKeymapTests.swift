@@ -142,6 +142,22 @@ import Testing
         #expect(back.actions.first { $0.action == "toggle_split" }?.alternates == ["ctrl+space>s"])
     }
 
+    @Test func reportsRepeatOnlyWhereASequenceSurvived() throws {
+        let parsed = parseKeymap("""
+            map cmd+opt+down|ctrl+a>ctrl+l --repeat next_session
+            map cmd+shift+e --repeat toggle_split
+            command "Grow" ctrl+a>x --repeat ./grow.sh
+            """)
+        try #require(parsed.diagnostics.isEmpty)
+        let payload = ControlKeymap.project(keymap: parsed.keymap, diagnostics: [], path: "/tmp/keymap.conf")
+        let encoded = try JSONEncoder().encode(ControlResponse(ok: true, result: ControlResult(keymap: payload)))
+        let back = try #require(try JSONDecoder().decode(ControlResponse.self, from: encoded).result?.keymap)
+
+        #expect(back.actions.first { $0.action == "next_session" }?.repeats == true)
+        #expect(back.actions.first { $0.action == "toggle_split" }?.repeats == nil, "a menu chord has nothing to repeat")
+        #expect(back.commands.first?.repeats == true)
+    }
+
     @Test func projectsAPipeFreeKeymapWithNoAlternatesAtAll() throws {
         let parsed = parseKeymap(pipeFreeKeymapFixture)
         let payload = ControlKeymap.project(keymap: parsed.keymap, diagnostics: parsed.diagnostics,

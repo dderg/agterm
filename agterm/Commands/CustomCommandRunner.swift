@@ -80,6 +80,8 @@ final class CustomCommandRunner {
 
     /// How long a half-typed leader sequence waits for its next chord before abandoning (kitty-style).
     private static let leaderTimeout: TimeInterval = 1.5
+    /// How long a `--repeat` sequence's prefix stays live after each fire; tmux's `repeat-time` default.
+    private static let repeatTimeout: TimeInterval = 0.5
 
     /// How long a failure panel stays up: long enough to read a line, short enough that a message about a
     /// command that has already finished is not still sitting over the session minutes later.
@@ -137,7 +139,8 @@ final class CustomCommandRunner {
     /// the matcher.
     private func rebuild() {
         let keymap = settings.keymap
-        commandEngine = CustomCommandEngine(commands: keymap.commands, builtinSequences: keymap.builtinSequences)
+        commandEngine = CustomCommandEngine(commands: keymap.commands, builtinSequences: keymap.builtinSequences,
+                                            builtinRepeating: keymap.builtinRepeating)
         cancelLeaderTimer()
     }
 
@@ -200,10 +203,11 @@ final class CustomCommandRunner {
         // esc abandons a half-typed leader (the call the timeout makes) and is not bindable, so it comes
         // before the chord.
         if event.keyCode == Self.escapeKeyCode {
-            guard commandEngine.isArmed else { return false }
+            // an open repeat window closes, but Esc still reaches the terminal: only a half-typed leader eats it.
+            let wasArmed = commandEngine.isArmed
             commandEngine.reset()
             cancelLeaderTimer()
-            return true
+            return wasArmed
         }
         guard let chord = chord(from: event) else {
             // a key with no usable base (e.g. a bare modifier) can't advance; while armed, keep waiting.
@@ -228,7 +232,7 @@ final class CustomCommandRunner {
         }
         switch commandEngine.advance(chord) {
         case .fired(let command):
-            cancelLeaderTimer()
+            restartRepeatTimerOrCancel()
             if let focusedSurface {
                 // context from the surface that had focus at key-down, not the frontmost active session.
                 runFromKeybind(command, focusedSurface: focusedSurface)
@@ -238,7 +242,7 @@ final class CustomCommandRunner {
             }
             return true
         case .firedBuiltin(let action):
-            cancelLeaderTimer()
+            restartRepeatTimerOrCancel()
             // no focusedSurface/runNoSurface split: a built-in acts on the active session and key window,
             // like the palette row behind it. Consumed even when `perform` finds the action gated out: the
             // gate lives inside each action, so this cannot see the outcome, and passing a leader's LAST chord
@@ -288,9 +292,9 @@ final class CustomCommandRunner {
         return Chord(mods: mods, key: key)
     }
 
-    private func startLeaderTimer() {
+    private func startLeaderTimer(_ interval: TimeInterval = CustomCommandRunner.leaderTimeout) {
         cancelLeaderTimer()
-        leaderTimer = Timer.scheduledTimer(withTimeInterval: Self.leaderTimeout, repeats: false) { [weak self] _ in
+        leaderTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: false) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
                 self.commandEngine.reset()
@@ -302,6 +306,10 @@ final class CustomCommandRunner {
     private func cancelLeaderTimer() {
         leaderTimer?.invalidate()
         leaderTimer = nil
+    }
+
+    private func restartRepeatTimerOrCancel() {
+        if commandEngine.isRepeating { startLeaderTimer(Self.repeatTimeout) } else { cancelLeaderTimer() }
     }
 
     /// Run a command fired from the PALETTE: context from the active session (the palette has no first

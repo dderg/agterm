@@ -311,6 +311,24 @@ final class CustomCommandRunnerTests: XCTestCase {
         XCTAssertEqual(fix.store.sidebarVisible, !fix.sidebarBefore)
     }
 
+    func testRepeatingSequenceTailRepeatsUntilEscOrTimeout() throws {
+        let fix = try fixture(keymap: "map ctrl+a>s --repeat toggle_sidebar\n")
+        let escape = keyDown("\u{1B}", keyCode: 53, mods: [])
+
+        XCTAssertTrue(fix.runner.handleKeyDown(leader, in: window))
+        XCTAssertTrue(fix.runner.handleKeyDown(sidebarTail, in: window))
+        XCTAssertTrue(fix.runner.handleKeyDown(sidebarTail, in: window), "the tail alone repeats inside the window")
+        XCTAssertEqual(fix.store.sidebarVisible, fix.sidebarBefore)
+        XCTAssertFalse(fix.runner.handleKeyDown(escape, in: window), "Esc closes the window but reaches the terminal")
+        XCTAssertFalse(fix.runner.handleKeyDown(sidebarTail, in: window))
+
+        XCTAssertTrue(fix.runner.handleKeyDown(leader, in: window))
+        XCTAssertTrue(fix.runner.handleKeyDown(sidebarTail, in: window))
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.7))
+        XCTAssertFalse(fix.runner.handleKeyDown(sidebarTail, in: window), "the window times out")
+        XCTAssertEqual(fix.store.sidebarVisible, !fix.sidebarBefore)
+    }
+
     // the menu-bound alternative belongs to AppKit, so the monitor must leave it alone — registering it in
     // both places is the double dispatch the menu/monitor split exists to prevent.
     func testTheMenuBoundAlternativeIsNotAlsoDispatchedByTheMonitor() throws {

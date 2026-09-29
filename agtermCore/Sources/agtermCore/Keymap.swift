@@ -12,6 +12,8 @@ public struct Keymap: Equatable, Sendable {
     /// Actions whose `map` line offered no menu-bindable alternative. Distinct from ABSENT, which means
     /// "keep the shipped default": without this, `map ctrl+space>s toggle_split` would leave ⌘D live.
     public let builtinUnbound: Set<BuiltinAction>
+    /// Actions whose `map` line carried `--repeat` and kept a monitor-bound sequence.
+    public let builtinRepeating: Set<BuiltinAction>
     /// The system-wide chord that summons the quick terminal, nil when the file binds none. Registered with
     /// the OS rather than the app's local monitor, so it deliberately takes NO part in the conflict model:
     /// it never reaches `KeybindMatcher`, and a chord it shares with a menu item resolves by which app is
@@ -22,11 +24,13 @@ public struct Keymap: Equatable, Sendable {
     public init(builtinOverrides: [BuiltinAction: Chord], commands: [CustomCommand],
                 builtinSequences: [BuiltinAction: [Keybind]] = [:],
                 builtinUnbound: Set<BuiltinAction> = [],
+                builtinRepeating: Set<BuiltinAction> = [],
                 globalHotkey: Chord? = nil) {
         self.builtinOverrides = builtinOverrides
         self.commands = commands
         self.builtinSequences = builtinSequences
         self.builtinUnbound = builtinUnbound
+        self.builtinRepeating = builtinRepeating
         self.globalHotkey = globalHotkey
     }
 
@@ -189,12 +193,14 @@ public func parseKeymap(_ text: String) -> (keymap: Keymap, diagnostics: [Keymap
                                      revertedDefaults: rejectedOverrideActions,
                                      diagnostics: &diagnostics)
 
+    let sequences = survivingAlternatives(survivors)
     return (Keymap(builtinOverrides: builtinOverrides,
                    commands: applySurvivingShortcuts(to: commandLines, survivors: survivors),
-                   builtinSequences: survivingAlternatives(survivors),
+                   builtinSequences: sequences,
                    builtinUnbound: unboundAfterRestoringStrandedDefaults(compatibilityUnbound,
                                                                          overrides: builtinOverrides,
                                                                          survivors: survivors),
+                   builtinRepeating: Set(sequences.keys.filter { resolved.alternatives[$0]?.repeats == true }),
                    globalHotkey: globalHotkey),
             diagnostics)
 }
@@ -281,6 +287,7 @@ private struct ParsedMapLine {
     let action: BuiltinAction
     let chord: Chord?
     let alternatives: Alternatives
+    let repeats: Bool
     let line: Int
 }
 
@@ -290,6 +297,7 @@ private struct MapLineAlternatives {
     let line: Int
     let scope: DropScope
     let alternatives: Alternatives
+    let repeats: Bool
 }
 
 /// A `command` line's monitor-bound alternatives held beside the command they key, so nothing re-parses
@@ -327,7 +335,8 @@ private func resolveMapLines(_ mapLines: [ParsedMapLine])
         guard !mapLine.alternatives.isEmpty else { continue }
         let scope = DropScope(hasSiblings: mapLine.chord != nil || mapLine.alternatives.count > 1)
         alternatives[mapLine.action] = MapLineAlternatives(line: mapLine.line, scope: scope,
-                                                           alternatives: mapLine.alternatives)
+                                                           alternatives: mapLine.alternatives,
+                                                           repeats: mapLine.repeats)
     }
     return (overrides, alternatives, unbound)
 }
@@ -633,14 +642,17 @@ private func stripComment(_ line: String) -> String {
     return result
 }
 
-/// Parse a `map` line's remainder, `<chord> <action>`: on success appends a `ParsedMapLine` in file order,
-/// on any failure a diagnostic, leaving `mapLines` untouched. Cross-builtin duplicate detection is deferred
-/// to `resolveBuiltinOverrides`.
+/// Parse a `map` line's remainder, `<chord> [--repeat] <action>`: on success appends a `ParsedMapLine` in file
+/// order, on any failure a diagnostic, leaving `mapLines` untouched. Cross-builtin duplicate detection is
+/// deferred to `resolveBuiltinOverrides`.
 private func parseMapLine(_ rest: String, line: Int, mapLines: inout [ParsedMapLine],
                           diagnostics: inout [KeymapDiagnostic]) {
     // split on the first run of general whitespace (space OR tab) so a tab-separated `map` line works.
     let chordText = String(rest.prefix(while: { !$0.isWhitespace }))
-    let actionName = String(rest.dropFirst(chordText.count)).trimmingCharacters(in: .whitespaces)
+    var actionName = String(rest.dropFirst(chordText.count)).trimmingCharacters(in: .whitespaces)
+    let repeatOption = "--repeat"
+    let repeats = actionName.prefix(while: { !$0.isWhitespace }) == repeatOption
+    if repeats { actionName = String(actionName.dropFirst(repeatOption.count)).trimmingCharacters(in: .whitespaces) }
     guard !chordText.isEmpty, !actionName.isEmpty else {
         diagnostics.append(KeymapDiagnostic(line: line, message: "map requires a chord and an action"))
         return
@@ -659,7 +671,7 @@ private func parseMapLine(_ rest: String, line: Int, mapLines: inout [ParsedMapL
         return
     }
     mapLines.append(ParsedMapLine(action: action, chord: split.chord, alternatives: split.alternatives,
-                                  line: line))
+                                  repeats: repeats, line: line))
 }
 
 /// Sort a `map` line's alternatives by dispatch path: the first one that can be a menu key equivalent — a
@@ -709,7 +721,7 @@ private func splitMapAlternatives(_ parsed: Alternatives, line: Int,
     return (menuChord, alternatives)
 }
 
-/// Parse the remainder of a `command` line (after the verb): `"<name>" [chord] [error options] <shell...>`. On any failure,
+/// Parse the remainder of a `command` line (after the verb): `"<name>" [chord] [options] <shell...>`. On any failure,
 /// a name already taken included, it appends a diagnostic and leaves `commandLines` untouched. The kept
 /// alternatives ride alongside the command; `applySurvivingShortcuts` is what turns them back into
 /// `CustomCommand.shortcut`.
@@ -780,6 +792,12 @@ private func parseCommandOptions(_ body: String, name: String, line: Int,
         if option == "--" {
             _ = takeToken()
             break
+        }
+        if option == "--repeat" {
+            guard !command.repeats else { return reject("repeats option '\(option)'") }
+            _ = takeToken()
+            command.repeats = true
+            continue
         }
         guard option.hasPrefix("--error-") else { break }
         guard ["--error-hud", "--error-position", "--error-pane"].contains(option) else {
