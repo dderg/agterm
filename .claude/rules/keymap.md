@@ -91,11 +91,14 @@ paths:
   Its `KeybindMatcher` supports simple chords and leaders such as `ctrl+a>g`,
   times leaders out after 1.5 seconds, and consumes repeats/releases for presses it consumed.
   `--repeat` (`Keymap.builtinRepeating`, `CustomCommand.repeats`) is tmux `bind -r`: a fired repeatable
-  leader sequence leaves its prefix live for 0.5 seconds, restarted per fire, for the last chord of any
-  repeatable bind under it; autorepeat of that live tail fires too, every other consumed autorepeat stays
-  swallowed. Any other chord closes the window and is matched afresh, and Esc closes it while still
-  reaching the terminal; it is deliberately not `isArmed`, which would swallow both. The chord goes to the
-  matcher before the `toggle_fullscreen` check, so a tail equal to ⌃⌘F repeats rather than toggling.
+  leader sequence leaves its prefix live for the last chord of any repeatable bind under it, until 0.5 seconds
+  after the fired tail's keyUp: the first autorepeat arrives only after "Delay until repeat" (0.5 s or more),
+  so a window timed from the fire would close first. Autorepeat of that live tail fires too, every other
+  consumed autorepeat stays swallowed. A new leader pressed while the tail is held keeps its 1.5 s timeout;
+  app deactivation, a text-field or auxiliary-window key, and Esc close the window (Esc still reaching the
+  terminal). Any other chord closes it and is matched afresh; it is deliberately not `isArmed`, which would
+  swallow those keys. The chord goes to the matcher before the `toggle_fullscreen` and page `close_session`
+  checks, which run only on an unmatched, unarmed chord, so a tail equal to either chord repeats instead.
   `NSMenu.willSendActionNotification` also records current F-key presses dispatched by AppKit menus,
   so their repeats/releases stay consumed without predicting from a stale keymap or intercepting the
   first press. Mouse and programmatic menu actions without a current F-key down record nothing.

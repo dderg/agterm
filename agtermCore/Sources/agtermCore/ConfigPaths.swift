@@ -94,8 +94,8 @@ public enum ConfigPaths {
         #       alternative becomes the menu shortcut and the rest fire through a key monitor, so
         #       their first chord needs a modifier or a function key (f1 through f20). A line offering
         #       no single chord leaves the action with no menu shortcut at all. `--repeat` keeps a
-        #       leader's prefix live for half a second after it fires, so its last key repeats on its
-        #       own (tmux `bind -r`): `ctrl+a>ctrl+l` then `ctrl+l` fires twice. Examples:
+        #       leader's prefix live until half a second after its key is released, so its last key
+        #       repeats on its own (tmux `bind -r`): `ctrl+a>ctrl+l` then `ctrl+l` fires twice. Examples:
         #
         #           map cmd+shift+l     toggle_split
         #           map cmd+t|ctrl+a>t  toggle_scratch

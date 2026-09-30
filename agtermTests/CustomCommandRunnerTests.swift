@@ -301,6 +301,7 @@ final class CustomCommandRunnerTests: XCTestCase {
 
     private var leader: NSEvent { keyDown("a", keyCode: 0, mods: [.control]) }
     private var sidebarTail: NSEvent { keyDown("s", keyCode: 1, mods: []) }
+    private var tailUp: NSEvent { keyDown("s", keyCode: 1, mods: [], type: .keyUp) }
 
     func testBuiltinSequenceAlternativeRunsTheActionAndIsConsumed() throws {
         let fix = try fixture()
@@ -324,8 +325,9 @@ final class CustomCommandRunnerTests: XCTestCase {
 
         XCTAssertTrue(fix.runner.handleKeyDown(leader, in: window))
         XCTAssertTrue(fix.runner.handleKeyDown(sidebarTail, in: window))
+        _ = fix.runner.handleKeyEvent(tailUp, in: window)
         RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.7))
-        XCTAssertFalse(fix.runner.handleKeyDown(sidebarTail, in: window), "the window times out")
+        XCTAssertFalse(fix.runner.handleKeyDown(sidebarTail, in: window), "the window times out after release")
         XCTAssertEqual(fix.store.sidebarVisible, !fix.sidebarBefore)
     }
 
@@ -344,6 +346,57 @@ final class CustomCommandRunnerTests: XCTestCase {
 
         XCTAssertFalse(fix.runner.handleKeyEvent(keyDown("\u{1B}", keyCode: 53, mods: []), in: window))
         XCTAssertTrue(fix.runner.handleKeyEvent(heldTail, in: window), "nothing leaks to the terminal once closed")
+        XCTAssertEqual(fix.store.sidebarVisible, !fix.sidebarBefore)
+    }
+
+    func testHeldTailOutlastsTheRepeatTimeoutUntilReleased() throws {
+        let fix = try fixture(keymap: "map ctrl+a>s --repeat toggle_sidebar\n")
+        let heldTail = keyDown("s", keyCode: 1, mods: [], repeating: true)
+
+        XCTAssertTrue(fix.runner.handleKeyEvent(leader, in: window))
+        XCTAssertTrue(fix.runner.handleKeyEvent(sidebarTail, in: window))
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.7))
+        XCTAssertTrue(fix.runner.handleKeyEvent(heldTail, in: window))
+        XCTAssertEqual(fix.store.sidebarVisible, fix.sidebarBefore, "the first autorepeat after the key-repeat delay fires")
+
+        XCTAssertTrue(fix.runner.handleKeyEvent(tailUp, in: window))
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.7))
+        XCTAssertFalse(fix.runner.handleKeyEvent(sidebarTail, in: window), "release starts the timeout")
+    }
+
+    func testANewLeaderPressedWhileTheTailIsHeldKeepsItsOwnTimeout() throws {
+        let fix = try fixture(keymap: "map ctrl+a>s --repeat toggle_sidebar\n")
+
+        XCTAssertTrue(fix.runner.handleKeyEvent(leader, in: window))
+        XCTAssertTrue(fix.runner.handleKeyEvent(sidebarTail, in: window))
+        XCTAssertTrue(fix.runner.handleKeyEvent(leader, in: window))
+        XCTAssertTrue(fix.runner.handleKeyEvent(tailUp, in: window))
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.7))
+        XCTAssertTrue(fix.runner.handleKeyEvent(sidebarTail, in: window), "the leader is still armed past repeatTimeout")
+        XCTAssertEqual(fix.store.sidebarVisible, fix.sidebarBefore)
+    }
+
+    func testDeactivationClosesTheWindowOfAHeldTail() throws {
+        let fix = try fixture(keymap: "map ctrl+a>s --repeat toggle_sidebar\n")
+
+        XCTAssertTrue(fix.runner.handleKeyEvent(leader, in: window))
+        XCTAssertTrue(fix.runner.handleKeyEvent(sidebarTail, in: window))
+        fix.runner.applicationDidResignActive()
+        XCTAssertFalse(fix.runner.handleKeyEvent(sidebarTail, in: window))
+        XCTAssertEqual(fix.store.sidebarVisible, !fix.sidebarBefore)
+    }
+
+    func testAKeyTypedIntoATextFieldClosesTheRepeatWindow() throws {
+        let fix = try fixture(keymap: "map ctrl+a>s --repeat toggle_sidebar\n")
+        let text = NSTextView(frame: NSRect(x: 0, y: 0, width: 200, height: 40))
+        window.contentView?.addSubview(text)
+
+        XCTAssertTrue(fix.runner.handleKeyDown(leader, in: window))
+        XCTAssertTrue(fix.runner.handleKeyDown(sidebarTail, in: window))
+        XCTAssertTrue(window.makeFirstResponder(text))
+        XCTAssertFalse(fix.runner.handleKeyDown(keyDown("\u{1B}", keyCode: 53, mods: []), in: window))
+        XCTAssertTrue(window.makeFirstResponder(nil))
+        XCTAssertFalse(fix.runner.handleKeyDown(sidebarTail, in: window), "the tail reaches the terminal")
         XCTAssertEqual(fix.store.sidebarVisible, !fix.sidebarBefore)
     }
 

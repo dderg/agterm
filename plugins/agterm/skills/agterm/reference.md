@@ -1450,7 +1450,7 @@ Key Mapping). Three verbs, line-based; blank lines and `#` comments ignored:
   parses and starts with a modifier or a function key (`f1` through `f20`).
   A custom chord may be a leader sequence (chords joined by `>`, e.g. `ctrl+a>g`). No chord → palette-only.
 - `--repeat` (either verb, after the chord) is tmux's `bind -r`: after a leader sequence fires, its prefix
-  stays live for 0.5 s, so the last chord of any `--repeat` sequence sharing that prefix fires again alone
+  stays live until 0.5 s after the tail is released, so the last chord of any `--repeat` sequence sharing that prefix fires again alone
   (`ctrl+a>ctrl+l ctrl+l`); holding the tail autorepeats it. Any other key ends the window and is matched
   afresh. A tail without a modifier (`ctrl+a>n`) takes that letter when typed within the window. Only a
   leader sequence can repeat: `keymap list` reports `repeats` true only when one survived.
